@@ -9,12 +9,15 @@ import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.lang.reflect.Array;
 import java.nio.file.Files;
 import java.nio.file.Paths;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Scanner;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -54,6 +57,8 @@ public class IRQueries {
 
         HashMap<String, HashMap<Integer, Integer>> invertedIndex = getTokens(filePaths, stopwords);
         output(invertedIndex);
+        String query = JOptionPane.showInputDialog(null, "Enter a Query: ");
+        processQuery(query, filePaths, invertedIndex);
     }
 
     /*
@@ -101,9 +106,6 @@ public class IRQueries {
             }
             if (count == 1 && word.charAt(length - 1) == '.') {
                 word = word.replace(".", "");
-                System.out.println(word);
-            } else {
-                System.out.println(word);
             }
         }
         else if(word.equals("-")){
@@ -132,7 +134,6 @@ public class IRQueries {
                 while (fileIn.hasNext()) {
                     newToken = fileIn.next(); //assign word to newToken
                     newToken = newToken.toLowerCase(); //convert to lowercase
-                    //newToken = newToken.replaceAll("[-+.^:,&\"/=();]", ""); //remove all special characters
                     newToken = processSpecialCharacters(newToken);
                     if (!stopWords.contains(newToken) && !newToken.equals("")) {
                         newToken = WordStem(newToken); //reduce word to root form
@@ -210,6 +211,68 @@ public class IRQueries {
         }
 
     }
+    
+    public static void processQuery(String query, ArrayList<String> fileNames, HashMap<String, HashMap<Integer, Integer>> invertedIndex){
+        String term = query.toLowerCase();
+        term = processSpecialCharacters(term);
+        term = WordStem(term);
+        if(invertedIndex.containsKey(term)){
+            HashMap<Integer, Double> scores = new HashMap<>();
+            HashMap<Integer, Integer> posting = (HashMap) invertedIndex.get(term).clone();
+            int docID;
+            Iterator ID = posting.keySet().iterator();
+            while(ID.hasNext()){
+                docID = (Integer) ID.next();
+                double docSize = getDocSize(fileNames.get(docID)); //number of terms in the document
+                double numOccurrences = posting.get(docID); //number of times term occurs in the document
+                int numRelevantDocs = posting.size(); //number of documents term occurs in
+                int collectionSize = fileNames.size(); //total number of documents in the collection
+                double termFrequency = Math.log(1 + numOccurrences/docSize);
+                double inverseDocFrequency = Math.log(collectionSize/numRelevantDocs);
+                double TFIDF = termFrequency * inverseDocFrequency; //TF-IDF Score
+                scores.put(docID, TFIDF);
+            }
+            Object[] IDs = scores.keySet().toArray();
+            for(int i = 0; i < IDs.length-1; i++){
+                for(int j = 0; j < IDs.length-1; j++){
+                    double score1 = scores.get(IDs[j]);
+                    double score2 = scores.get(IDs[j+1]);
+                    if(score1 < score2){
+                        Object temp = IDs[j];
+                        IDs[j] = IDs[j+1];
+                        IDs[j+1] = temp;
+                    }
+                }
+            }
+            System.out.println("Term: " + query + "\n" + "Relevant Documents:");
+            String output = "";
+            for(int i = 0; i < IDs.length; i++){    
+                output += fileNames.get((Integer) IDs[i]) + "\n";
+            }
+            JOptionPane.showMessageDialog(null, output);
+            
+        }
+        else{
+            JOptionPane.showMessageDialog(null, "No Results Found.");
+        }
+    }
+    
+    //returns number of words in document
+    public static int getDocSize(String file){
+        int docSize = 0;
+        String word;
+        try {
+            Scanner fileIn = new Scanner(new File(file));
+            while(fileIn.hasNext()){
+                word = fileIn.next();
+                docSize++;
+            }
+        } catch (FileNotFoundException ex) {
+            Logger.getLogger(IRQueries.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        return docSize;
+    }
+    
 
     /*
      * Function Name: WordStem
